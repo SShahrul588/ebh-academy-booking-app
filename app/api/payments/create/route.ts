@@ -3,46 +3,124 @@ import { paymentCreateSchema } from "@/lib/validators";
 import { createPaymentCheckout } from "@/lib/payments";
 import { getSupabaseAdmin } from "@/lib/supabase";
 
+type CustomerInfo = {
+  name?: string;
+  email?: string;
+  phone?: string;
+};
+
+type BookingRow = {
+  id: string;
+  booking_code?: string;
+  room_slug?: string;
+  start_at?: string;
+  end_at?: string;
+  total_amount?: number;
+  deposit_amount?: number;
+  customers?: CustomerInfo | CustomerInfo[];
+};
+
+function getCustomer(booking: BookingRow | null): CustomerInfo | null {
+  if (!booking?.customers) return null;
+
+  if (Array.isArray(booking.customers)) {
+    return booking.customers[0] || null;
+  }
+
+  return booking.customers;
+}
+
 export async function POST(request: Request) {
   try {
     const payload = paymentCreateSchema.parse(await request.json());
-    const provider = (process.env.PAYMENT_PROVIDER || payload.provider || "mock") as "mock" | "billplz" | "toyyibpay";
+    const provider = payload.provider || "mock";
+
     const supabase = getSupabaseAdmin();
 
-    let booking: { id: string; booking_code?: string; customer_id?: string } | null = { id: payload.bookingId };
-    let customer: { name?: string; email?: string; phone?: string } | null = null;
+    let booking: BookingRow | null = null;
+    let customer: CustomerInfo | null = null;
 
-    if (supabase && !payload.bookingId.startsWith("mock_")) {
-      const { data, error } = await supabase.from("bookings").select("id, booking_code, customer_id, customers(name,email,phone)").eq("id", payload.bookingId).single();
-      if (error) throw error;
-      booking = data as typeof booking;
-      customer = Array.isArray((data as any).customers) ? (data as any).customers[0] : (data as any).customers;
+    if (supabase) {
+      const { data, error } = await supabase
+        .from("bookings")
+        .select(
+          "id, booking_code, room_slug, start_at, end_at, total_amount, deposit_amount, customers(name,email,phone)"
+        )
+        .eq("id", payload.bookingId)
+        .single();
+
+      if (error) {
+        throw error;
+      }
+
+      booking = data as unknown as BookingRow;
+      customer = getCustomer(booking);
+    }
+
+    const bookingId = payload.bookingId;
+    const bookingCode = booking?.booking_code || bookingId;
+    const amount = payload.amount;
+
+    if (provider === "mock") {
+      const params = new URLSearchParams();
+
+      params.set("booking", bookingId);
+
+      if (booking?.room_slug) {
+        params.set("roomSlug", booking.room_slug);
+      }
+
+      if (booking?.start_at) {
+        params.set("startAt", booking.start_at);
+      }
+
+      if (booking?.end_at) {
+        params.set("endAt", booking.end_at);
+      }
+
+      if (customer?.name) {
+        params.set("customerName", customer.name);
+      }
+
+      if (customer?.email) {
+        params.set("customerEmail", customer.email);
+      }
+
+      return NextResponse.json({
+        provider: "mock",
+        checkoutUrl: `/booking/success?${params.toString()}`,
+        externalRef: bookingId,
+        raw: {
+          bookingId,
+          bookingCode,
+          mock: true,
+        },
+      });
     }
 
     const checkout = await createPaymentCheckout({
       provider,
-      bookingId: payload.bookingId,
-      bookingCode: booking?.booking_code,
-      amount: payload.amount,
+      bookingId,
+      bookingCode,
+      amount,
       customerName: customer?.name,
       customerEmail: customer?.email,
       customerPhone: customer?.phone,
     });
 
-    if (supabase && !payload.bookingId.startsWith("mock_")) {
-      await supabase.from("payments").insert({
-        booking_id: payload.bookingId,
-        provider: checkout.provider,
-        amount: payload.amount,
-        status: "pending",
-        external_ref: checkout.externalRef,
-        checkout_url: checkout.checkoutUrl,
-        raw_payload: checkout.raw,
-      });
-    }
-
-    return NextResponse.json({ checkoutUrl: checkout.checkoutUrl, provider: checkout.provider, externalRef: checkout.externalRef });
+    return NextResponse.json(checkout);
   } catch (error) {
-    return NextResponse.json({ error: error instanceof Error ? error.message : "Payment creation failed" }, { status: 400 });
+    console.error("PAYMENT_CREATE_ERROR", error);
+
+    return NextResponse.json(
+      {
+        ok: false,
+        error:
+          error instanceof Error
+            ? error.message
+            : "Unable to create payment checkout",
+      },
+      { status: 400 }
+    );
   }
 }
