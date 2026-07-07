@@ -8,13 +8,23 @@ export async function POST(request: Request) {
     const payload = calendarCheckSchema.parse(await request.json());
 
     if (new Date(payload.endAt) <= new Date(payload.startAt)) {
-      return NextResponse.json({ available: false, reason: "End time must be after start time" }, { status: 400 });
+      return NextResponse.json(
+        { available: false, reason: "End time must be after start time" },
+        { status: 400 }
+      );
     }
 
     const supabase = getSupabaseAdmin();
+
     if (supabase) {
-      const { data: room } = await supabase.from("rooms").select("id, slug").eq("slug", payload.roomSlug).maybeSingle();
-      const roomFilter = payload.roomSlug === "bundle-all-rooms" ? undefined : room?.id;
+      const { data: room } = await supabase
+        .from("rooms")
+        .select("id, slug")
+        .eq("slug", payload.roomSlug)
+        .maybeSingle();
+
+      const roomFilter =
+        payload.roomSlug === "bundle-all-rooms" ? undefined : room?.id;
 
       let query = supabase
         .from("bookings")
@@ -24,12 +34,22 @@ export async function POST(request: Request) {
         .in("status", ["pending", "confirmed"])
         .limit(1);
 
-      if (roomFilter) query = query.or(`room_id.eq.${roomFilter},room_slug.eq.bundle-all-rooms`);
+      if (roomFilter) {
+        query = query.or(`room_id.eq.${roomFilter},room_slug.eq.bundle-all-rooms`);
+      }
 
       const { data: conflicts, error } = await query;
-      if (error) throw error;
+
+      if (error) {
+        console.error("SUPABASE_BOOKING_CHECK_ERROR", error);
+        throw error;
+      }
+
       if (conflicts && conflicts.length > 0) {
-        return NextResponse.json({ available: false, reason: "Slot already booked in Supabase" });
+        return NextResponse.json({
+          available: false,
+          reason: "Slot already booked in Supabase",
+        });
       }
 
       let blockedQuery = supabase
@@ -38,19 +58,67 @@ export async function POST(request: Request) {
         .lt("start_at", payload.endAt)
         .gt("end_at", payload.startAt)
         .limit(1);
-      if (roomFilter) blockedQuery = blockedQuery.or(`room_id.eq.${roomFilter},room_id.is.null`);
+
+      if (roomFilter) {
+        blockedQuery = blockedQuery.or(`room_id.eq.${roomFilter},room_id.is.null`);
+      }
+
       const { data: blocked, error: blockedError } = await blockedQuery;
-      if (blockedError) throw blockedError;
+
+      if (blockedError) {
+        console.error("SUPABASE_BLOCKED_SLOT_ERROR", blockedError);
+        throw blockedError;
+      }
+
       if (blocked && blocked.length > 0) {
-        return NextResponse.json({ available: false, reason: "Slot blocked for maintenance/private booking" });
+        return NextResponse.json({
+          available: false,
+          reason: "Slot blocked for maintenance/private booking",
+        });
       }
     }
 
-    const calendar = await checkGoogleCalendarAvailability(payload);
-    if (!calendar.available) return NextResponse.json({ available: false, reason: "Slot already busy in Google Calendar", busy: calendar.busy });
+    try {
+      const calendar = await checkGoogleCalendarAvailability(payload);
 
-    return NextResponse.json({ available: true, source: calendar.source });
+      if (!calendar.available) {
+        console.log("GOOGLE_CALENDAR_BUSY", calendar.busy);
+
+        return NextResponse.json({
+          available: false,
+          reason: "Slot busy in Google Calendar",
+          busy: calendar.busy,
+          source: calendar.source,
+        });
+      }
+
+      return NextResponse.json({
+        available: true,
+        source: calendar.source,
+      });
+    } catch (calendarError) {
+      console.error("GOOGLE_CALENDAR_CHECK_ERROR", calendarError);
+
+      return NextResponse.json(
+        {
+          available: false,
+          reason:
+            calendarError instanceof Error
+              ? `Google Calendar error: ${calendarError.message}`
+              : "Google Calendar error",
+        },
+        { status: 400 }
+      );
+    }
   } catch (error) {
-    return NextResponse.json({ available: false, error: error instanceof Error ? error.message : "Invalid request" }, { status: 400 });
+    console.error("CALENDAR_CHECK_ROUTE_ERROR", error);
+
+    return NextResponse.json(
+      {
+        available: false,
+        reason: error instanceof Error ? error.message : "Invalid request",
+      },
+      { status: 400 }
+    );
   }
 }
