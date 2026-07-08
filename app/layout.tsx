@@ -21,7 +21,6 @@ export const metadata: Metadata = {
   },
 
   description: defaultDescription,
-
   applicationName: siteName,
 
   keywords: [
@@ -66,6 +65,8 @@ export const metadata: Metadata = {
     },
   },
 
+  // NOTE: og:image / twitter:image are generated automatically by Next.js
+  // from src/app/images/opengraph-whatsapp.jpg.jpg — no manual image URLs needed.
   openGraph: {
     type: "website",
     locale: "ms_MY",
@@ -74,14 +75,6 @@ export const metadata: Metadata = {
     title: "EBH Training Academy — Premium Workspace for Rent",
     description:
       "Book training room, meeting room dan consultant room dengan mudah. Sesuai untuk kelas, kursus, coaching, mesyuarat dan private consultation.",
-    images: [
-      {
-        url: "/opengraph-image",
-        width: 1200,
-        height: 630,
-        alt: "EBH Training Academy premium training room and workspace rental",
-      },
-    ],
   },
 
   twitter: {
@@ -89,7 +82,6 @@ export const metadata: Metadata = {
     title: "EBH Training Academy — Premium Workspace for Rent",
     description:
       "Tempah training room, meeting room dan consultant room secara online di EBH Training Academy.",
-    images: ["/opengraph-image"],
   },
 
   category: "Workspace Rental",
@@ -100,10 +92,6 @@ export const metadata: Metadata = {
     "business:contact_data:locality": "Seri Kembangan",
     "business:contact_data:region": "Selangor",
     "business:contact_data:country_name": "Malaysia",
-    "og:image:secure_url": `${siteUrl}/opengraph-image`,
-    "og:image:type": "image/jpeg",
-    "og:image:width": "1200",
-    "og:image:height": "630",
   },
 };
 
@@ -118,8 +106,9 @@ const structuredData = {
   "@type": "LocalBusiness",
   name: "EBH Training Academy",
   url: siteUrl,
-  image: `${siteUrl}/opengraph-image`,
+  image: `${siteUrl}/images/opengraph-whatsapp.jpg`,
   description: defaultDescription,
+  telephone: "+60149556747",
   address: {
     "@type": "PostalAddress",
     addressLocality: "Seri Kembangan",
@@ -169,6 +158,18 @@ export default function RootLayout({
 }: Readonly<{ children: ReactNode }>) {
   return (
     <html lang="ms">
+      <head>
+        <link rel="preconnect" href="https://fonts.googleapis.com" />
+        <link
+          rel="preconnect"
+          href="https://fonts.gstatic.com"
+          crossOrigin="anonymous"
+        />
+        <link
+          href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600;9..144,700&family=Manrope:wght@400;500;600;700;800&display=swap"
+          rel="stylesheet"
+        />
+      </head>
       <body>
         <script
           type="application/ld+json"

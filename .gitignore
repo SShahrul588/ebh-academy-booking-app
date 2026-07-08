@@ -1,5 +1,16 @@
-node_modules
-.env.local
-.next/
+# dependencies
 node_modules/
+
+# next.js build
+.next/
+out/
+
+# env files (JANGAN commit - ada secret keys)
+.env
 .env.local
+.env*.local
+
+# misc
+.DS_Store
+*.log
+.netlify/

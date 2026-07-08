@@ -57,48 +57,47 @@ export async function POST(request: Request) {
         .single();
 
       if (error) {
-        return NextResponse.json(
-          { ok: false, error: error.message },
-          { status: 500 }
-        );
+        console.error("SUPABASE_CALLBACK_ERROR", error);
       }
 
-      await supabase
-        .from("bookings")
-        .update({ payment_status: "paid", status: "confirmed" })
-        .eq("id", bookingId);
-
-      await supabase
-        .from("payments")
-        .update({ status: "paid", raw_payload: payload })
-        .eq("booking_id", bookingId);
-
-      const customer = Array.isArray(booking.customers)
-        ? booking.customers[0]
-        : booking.customers;
-
-      const event = await createGoogleCalendarEvent({
-        roomSlug: booking.room_slug,
-        summary: `EBH Booking ${booking.booking_code}`,
-        description: `Customer: ${customer?.name || ""}\nBooking: ${booking.booking_code}`,
-        startAt: booking.start_at,
-        endAt: booking.end_at,
-        customerEmail: customer?.email,
-      });
-
-      if (event.eventIds.length > 0) {
+      if (booking && !error) {
         await supabase
           .from("bookings")
-          .update({ google_event_id: event.eventIds.join(",") })
+          .update({ payment_status: "paid", status: "confirmed" })
           .eq("id", bookingId);
-      }
 
-      return NextResponse.json({
-        ok: true,
-        source: "supabase",
-        paid: true,
-        calendar: event,
-      });
+        await supabase
+          .from("payments")
+          .update({ status: "paid", raw_payload: payload })
+          .eq("booking_id", bookingId);
+
+        const customer = Array.isArray(booking.customers)
+          ? booking.customers[0]
+          : booking.customers;
+
+        const event = await createGoogleCalendarEvent({
+          roomSlug: booking.room_slug,
+          summary: `EBH Booking ${booking.booking_code}`,
+          description: `Customer: ${customer?.name || ""}\nBooking: ${booking.booking_code}`,
+          startAt: booking.start_at,
+          endAt: booking.end_at,
+          customerEmail: customer?.email,
+        });
+
+        if (event.eventIds.length > 0) {
+          await supabase
+            .from("bookings")
+            .update({ google_event_id: event.eventIds.join(",") })
+            .eq("id", bookingId);
+        }
+
+        return NextResponse.json({
+          ok: true,
+          source: "supabase",
+          paid: true,
+          calendar: event,
+        });
+      }
     }
 
     const roomSlug = payload.roomSlug || payload.room_slug;
@@ -115,7 +114,7 @@ export async function POST(request: Request) {
         calendar: {
           created: false,
           reason:
-            "Supabase is not configured and mock payload has no roomSlug/startAt/endAt.",
+            "Mock payment confirmed, but missing roomSlug/startAt/endAt for Google Calendar event.",
         },
       });
     }
